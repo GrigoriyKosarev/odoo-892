@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <record id="view_bio_mrp_production_schedule_import_wizard_form" model="ir.ui.view">
+        <field name="name">view_bio_mrp_production_schedule_import_wizard_form</field>
+        <field name="model">bio.mrp.production.schedule.import.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Import from Excel">
+                <group>
+                    <field name="manufacturing_period"/>
+                    <field name="excel_file"/>
+                    <field name="filename"/>
+                    <field name="line_ids"/>
+                </group>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_bio_mrp_production_schedule_import_wizard" model="ir.actions.act_window">
+        <field name="name">Import from Excel</field>
+        <field name="res_model">bio.mrp.production.schedule.import.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+<!--    <record id="" model="">-->
+
+<!--    </record>-->
+
+</odoo>

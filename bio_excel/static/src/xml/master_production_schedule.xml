@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="bio_excel.MasterProductionSchedule.Buttons" t-inherit="mrp_mps.MasterProductionSchedule.Buttons" t-inherit-mode="extension">
+        <xpath expr="//button[@name='onCreateProduct']" position="after">
+            <button class="btn btn-secondary o_mps_import_excel"
+                    name="onImportFromExcel"
+                    t-on-click="onImportFromExcel">
+                <i class="fa fa-download"/> Import from Excel
+            </button>
+        </xpath>
+    </t>
+
+</templates>
