@@ -23,8 +23,8 @@
              ],
     'assets': {
         'web.assets_backend': [
-            'bio_excel/static/src/js/mps_owl_patch.js',
-            'bio_excel/static/src/js/mps_button_inject.js',
+            'bio_excel/static/src/xml/mrp_mps_control_panel_ext.xml',
+            'bio_excel/static/src/js/mrp_mps_control_panel_patch.js',
         ],
     },
     'auto_install': False,
