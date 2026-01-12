@@ -23,6 +23,7 @@
              ],
     'assets': {
         'web.assets_backend': [
+            'bio_excel/static/src/js/mps_owl_patch.js',
             'bio_excel/static/src/js/mps_button_inject.js',
         ],
     },
