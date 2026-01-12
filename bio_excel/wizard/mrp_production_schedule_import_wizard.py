@@ -1,4 +1,7 @@
+import base64
+import io
 from odoo import fields, models, _
+from odoo.exceptions import UserError
 
 
 class MrpProductionSheduleImportWizard(models.TransientModel):
@@ -25,6 +28,34 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
             'res_model': 'bio.mrp.production.schedule.import.wizard',
             'target': 'new',
             'context': {},
+        }
+
+    def action_import(self):
+        """Import data from Excel file"""
+        self.ensure_one()
+
+        if not self.excel_file:
+            raise UserError(_('Please upload an Excel file.'))
+
+        # Decode the file
+        try:
+            file_data = base64.b64decode(self.excel_file)
+            file_obj = io.BytesIO(file_data)
+        except Exception as e:
+            raise UserError(_('Error reading file: %s') % str(e))
+
+        # TODO: Add Excel processing logic here
+        # For now, just show success message
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Excel file uploaded successfully. Import logic will be implemented.'),
+                'type': 'success',
+                'sticky': False,
+            }
         }
 
 

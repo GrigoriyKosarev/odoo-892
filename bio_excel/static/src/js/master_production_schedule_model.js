@@ -12,7 +12,7 @@ patch(MasterProductionScheduleModel.prototype, 'bio_excel.MasterProductionSchedu
      */
     _importFromExcel() {
         this.mutex.exec(() => {
-            this.action.doAction({
+            this.env.services.action.doAction({
                 name: _t('Import from Excel'),
                 type: 'ir.actions.act_window',
                 res_model: 'bio.mrp.production.schedule.import.wizard',
