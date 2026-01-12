@@ -23,9 +23,7 @@
              ],
     'assets': {
         'web.assets_backend': [
-            'bio_excel/static/src/js/master_production_schedule_model.js',
-            'bio_excel/static/src/js/master_production_schedule_controller.js',
-            'bio_excel/static/src/xml/master_production_schedule.xml',
+            'bio_excel/static/src/js/mps_button_inject.js',
         ],
     },
     'auto_install': False,
