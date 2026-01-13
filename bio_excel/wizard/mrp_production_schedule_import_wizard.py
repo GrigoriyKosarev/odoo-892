@@ -1,5 +1,6 @@
 import base64
 import io
+from datetime import datetime
 from odoo import fields, models, _, api
 from odoo.exceptions import UserError
 
@@ -29,6 +30,38 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
     line_ids = fields.One2many(
         comodel_name='bio.mrp.production.schedule.lines.import.wizard',
         inverse_name='bio_mrp_production_schedule_wizard_id', string='Lines' )
+
+    # Excel column configuration (0-indexed, A=0, B=1, C=2, etc.)
+    default_code_column = fields.Integer(
+        string='Product Code Column',
+        default=0,
+        required=True,
+        help='Column number for product default_code (A=0, B=1, C=2, etc.)')
+    product_name_column = fields.Integer(
+        string='Product Name Column',
+        default=1,
+        required=True,
+        help='Column number for product name (A=0, B=1, C=2, etc.)')
+    first_date_column = fields.Integer(
+        string='First Date Column',
+        default=2,
+        required=True,
+        help='Column number where dates start (A=0, B=1, C=2, etc.)')
+
+    @api.onchange('manufacturing_period')
+    def _onchange_manufacturing_period(self):
+        """Update column configuration based on manufacturing period"""
+        # You can customize these defaults based on your Excel templates
+        if self.manufacturing_period == 'month':
+            # For monthly: typically A=code, B=name, C onwards=dates
+            self.default_code_column = 0
+            self.product_name_column = 1
+            self.first_date_column = 2
+        elif self.manufacturing_period == 'week':
+            # For weekly: same structure but different date ranges
+            self.default_code_column = 0
+            self.product_name_column = 1
+            self.first_date_column = 2
 
 
     def action_open_wizard(self):
@@ -71,9 +104,9 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         # Parse header row (dates)
         header_row = list(sheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
 
-        # Extract dates from header (skip first 2 columns: default_code, Назва)
+        # Extract dates from header starting from configured column
         date_columns = []
-        for col_idx, cell_value in enumerate(header_row[2:], start=2):
+        for col_idx, cell_value in enumerate(header_row[self.first_date_column:], start=self.first_date_column):
             if cell_value:
                 try:
                     # Try to parse date from DD.MM.YYYY format
@@ -89,19 +122,20 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                     continue
 
         if not date_columns:
-            raise UserError(_('No valid dates found in header row. Expected format: DD.MM.YYYY (e.g., 01.12.2025)'))
+            raise UserError(_('No valid dates found in header row starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % self.first_date_column)
 
         # Parse data rows (starting from row 2)
         lines_to_create = []
         for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-            default_code = row[0]
-            product_name = row[1] if len(row) > 1 else ''
+            # Get values from configured columns
+            default_code = row[self.default_code_column] if self.default_code_column < len(row) else None
+            product_name = row[self.product_name_column] if self.product_name_column < len(row) else ''
 
             if not default_code:
                 continue  # Skip empty rows
 
             # Find product by default_code
-            product = self.env['product.product'].search([('default_code', '=', default_code)], limit=1)
+            product = self.env['product.product'].search([('default_code', '=', str(default_code))], limit=1)
 
             # Create line for each date column
             for col_idx, forecast_date in date_columns:
