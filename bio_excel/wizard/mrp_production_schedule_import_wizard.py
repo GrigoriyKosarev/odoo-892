@@ -4,6 +4,13 @@ from datetime import datetime
 from odoo import fields, models, _, api
 from odoo.exceptions import UserError
 
+# Try to import Excel parsing libraries
+try:
+    import xlrd
+    from xlrd import xldate
+except ImportError:
+    xlrd = None
+
 try:
     import openpyxl
 except ImportError:
@@ -81,25 +88,152 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         if not self.excel_file:
             raise UserError(_('Please upload an Excel file.'))
 
-        if not openpyxl:
+        # Check which library to use based on file extension
+        filename = self.filename or ''
+        use_xlrd = filename.endswith('.xls') or not filename.endswith('.xlsx')
+
+        if use_xlrd and not xlrd:
+            raise UserError(_('Python library "xlrd" is not installed. Please install it: pip install xlrd'))
+        if not use_xlrd and not openpyxl:
             raise UserError(_('Python library "openpyxl" is not installed. Please install it: pip install openpyxl'))
 
         # Decode the file
         try:
             file_data = base64.b64decode(self.excel_file)
-            file_obj = io.BytesIO(file_data)
         except Exception as e:
             raise UserError(_('Error reading file: %s') % str(e))
 
-        # Parse Excel file
+        # Clear existing lines
+        self.line_ids.unlink()
+
+        if use_xlrd and xlrd:
+            # Use xlrd for .xls files
+            date_columns, lines_to_create = self._parse_excel_xlrd(file_data)
+        else:
+            # Use openpyxl for .xlsx files
+            date_columns, lines_to_create = self._parse_excel_openpyxl(file_data)
+
+        # Create lines
+        if lines_to_create:
+            self.env['bio.mrp.production.schedule.lines.import.wizard'].create(lines_to_create)
+
+        # Return view with lines
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'bio.mrp.production.schedule.import.wizard',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'new',
+        }
+
+    def _parse_excel_xlrd(self, file_data):
+        """Parse Excel file using xlrd library (.xls format)"""
         try:
+            workbook = xlrd.open_workbook(file_contents=file_data)
+            sheet = workbook.sheet_by_index(0)
+        except Exception as e:
+            raise UserError(_('Error parsing Excel file with xlrd: %s') % str(e))
+
+        # Parse header row (dates)
+        if sheet.nrows < 1:
+            raise UserError(_('Excel file is empty'))
+
+        header_row = sheet.row_values(0)
+
+        # Extract dates from header starting from configured column
+        date_columns = []
+        for col_idx in range(self.first_date_column, len(header_row)):
+            cell_value = header_row[col_idx]
+            if cell_value:
+                try:
+                    forecast_date = None
+                    # Check if it's a date number (xlrd stores dates as float)
+                    if isinstance(cell_value, float):
+                        # Convert Excel date number to Python date
+                        date_tuple = xldate.xldate_as_tuple(cell_value, workbook.datemode)
+                        forecast_date = datetime(*date_tuple).date()
+                    elif isinstance(cell_value, str):
+                        # Try to parse date from DD.MM.YYYY format
+                        forecast_date = datetime.strptime(cell_value.strip(), '%d.%m.%Y').date()
+
+                    if forecast_date:
+                        date_columns.append((col_idx, forecast_date))
+                except (ValueError, xlrd.xldate.XLDateError):
+                    # Skip invalid dates
+                    continue
+
+        if not date_columns:
+            raise UserError(_('No valid dates found in header row starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % self.first_date_column)
+
+        # Parse data rows (starting from row 1, since row 0 is header)
+        lines_to_create = []
+        for row_idx in range(1, sheet.nrows):
+            row = sheet.row_values(row_idx)
+
+            # Get values from configured columns
+            default_code = row[self.default_code_column] if self.default_code_column < len(row) else None
+            product_name = row[self.product_name_column] if self.product_name_column < len(row) else ''
+
+            if not default_code:
+                continue  # Skip empty rows
+
+            # Convert default_code to string
+            if isinstance(default_code, float):
+                default_code = str(int(default_code))
+            else:
+                default_code = str(default_code).strip()
+
+            # Find product by default_code
+            product = self.env['product.product'].search([('default_code', '=', default_code)], limit=1)
+
+            # Create line for each date column
+            for col_idx, forecast_date in date_columns:
+                qty = row[col_idx] if col_idx < len(row) else 0
+
+                # Skip if quantity is 0 or empty
+                if not qty:
+                    continue
+
+                try:
+                    forecast_qty = float(qty)
+                except (ValueError, TypeError):
+                    forecast_qty = 0.0
+
+                if forecast_qty <= 0:
+                    continue
+
+                line_vals = {
+                    'bio_mrp_production_schedule_wizard_id': self.id,
+                    'default_code': default_code,
+                    'product_name': str(product_name).strip() if product_name else '',
+                    'forecast_date': forecast_date,
+                    'forecast_qty': forecast_qty,
+                }
+
+                if product:
+                    line_vals.update({
+                        'product_id': product.id,
+                        'state': 'found',
+                        'message': _('Product found'),
+                    })
+                else:
+                    line_vals.update({
+                        'state': 'not_found',
+                        'message': _('Product with code "%s" not found in database') % default_code,
+                    })
+
+                lines_to_create.append(line_vals)
+
+        return date_columns, lines_to_create
+
+    def _parse_excel_openpyxl(self, file_data):
+        """Parse Excel file using openpyxl library (.xlsx format)"""
+        try:
+            file_obj = io.BytesIO(file_data)
             workbook = openpyxl.load_workbook(file_obj, data_only=True)
             sheet = workbook.active
         except Exception as e:
-            raise UserError(_('Error parsing Excel file: %s') % str(e))
-
-        # Clear existing lines
-        self.line_ids.unlink()
+            raise UserError(_('Error parsing Excel file with openpyxl: %s') % str(e))
 
         # Parse header row (dates)
         header_row = list(sheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
@@ -175,18 +309,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
 
                 lines_to_create.append(line_vals)
 
-        # Create lines
-        if lines_to_create:
-            self.env['bio.mrp.production.schedule.lines.import.wizard'].create(lines_to_create)
-
-        # Return view with lines
-        return {
-            'type': 'ir.actions.act_window',
-            'res_model': 'bio.mrp.production.schedule.import.wizard',
-            'res_id': self.id,
-            'view_mode': 'form',
-            'target': 'new',
-        }
+        return date_columns, lines_to_create
 
     def action_import(self):
         """Import validated lines to mrp.production.schedule"""
