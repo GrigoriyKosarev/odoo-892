@@ -214,13 +214,33 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 }
 
                 if product:
-                    # Search for BOM with proper filters for multi-company and product variants
-                    bom = self.env['mrp.bom'].search([
-                        ('product_tmpl_id', '=', product.product_tmpl_id.id),
-                        '|', ('product_id', '=', product.id), ('product_id', '=', False),
-                        ('type', '=', 'normal'),
-                        '|', ('company_id', '=', self.warehouse_id.company_id.id), ('company_id', '=', False)
-                    ], order='product_id DESC, company_id DESC', limit=1)
+                    # Search for BOM - try multiple approaches to maximize compatibility
+                    bom = False
+
+                    # Approach 1: Most specific - with company and product variant
+                    if self.warehouse_id.company_id:
+                        bom = self.env['mrp.bom'].search([
+                            ('product_tmpl_id', '=', product.product_tmpl_id.id),
+                            '|', ('product_id', '=', product.id), ('product_id', '=', False),
+                            ('type', '=', 'normal'),
+                            '|', ('company_id', '=', self.warehouse_id.company_id.id), ('company_id', '=', False)
+                        ], order='product_id DESC, company_id DESC', limit=1)
+
+                    # Approach 2: Without company filter
+                    if not bom:
+                        bom = self.env['mrp.bom'].search([
+                            ('product_tmpl_id', '=', product.product_tmpl_id.id),
+                            '|', ('product_id', '=', product.id), ('product_id', '=', False),
+                            ('type', '=', 'normal'),
+                        ], order='product_id DESC', limit=1)
+
+                    # Approach 3: Simplest - just by template and type (last resort)
+                    if not bom:
+                        bom = self.env['mrp.bom'].search([
+                            ('product_tmpl_id', '=', product.product_tmpl_id.id),
+                            ('type', '=', 'normal'),
+                        ], limit=1)
+
                     if bom:
                         line_vals.update({
                             'product_id': product.id,
@@ -229,10 +249,14 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                             'message': _('Product and BOM found'),
                         })
                     else:
+                        # Count total BOMs for debugging
+                        total_boms = self.env['mrp.bom'].search_count([
+                            ('product_tmpl_id', '=', product.product_tmpl_id.id),
+                        ])
                         line_vals.update({
                             'product_id': product.id,
                             'state': 'bill_not_found',
-                            'message': _('Bill of Materials for product "%s" not found') % default_code,
+                            'message': _('BOM not found for product "%s" (template has %d BOMs total)') % (default_code, total_boms),
                         })
                 else:
                     line_vals.update({
