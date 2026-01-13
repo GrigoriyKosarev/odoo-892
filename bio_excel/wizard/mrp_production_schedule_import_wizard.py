@@ -214,21 +214,25 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 }
 
                 if product:
+                    # Search for BOM with proper filters for multi-company and product variants
                     bom = self.env['mrp.bom'].search([
                         ('product_tmpl_id', '=', product.product_tmpl_id.id),
-                        ('type', '=', 'normal')
-                    ], limit=1)
+                        '|', ('product_id', '=', product.id), ('product_id', '=', False),
+                        ('type', '=', 'normal'),
+                        '|', ('company_id', '=', self.warehouse_id.company_id.id), ('company_id', '=', False)
+                    ], order='product_id DESC, company_id DESC', limit=1)
                     if bom:
                         line_vals.update({
                             'product_id': product.id,
                             'bom_id': bom.id,
                             'state': 'ready_for_import',
-                            'message': _('All found'),
+                            'message': _('Product and BOM found'),
                         })
                     else:
                         line_vals.update({
+                            'product_id': product.id,
                             'state': 'bill_not_found',
-                            'message': _('Bill of Materials with code "%s" not found in database') % default_code,
+                            'message': _('Bill of Materials for product "%s" not found') % default_code,
                         })
                 else:
                     line_vals.update({
@@ -250,18 +254,13 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         if not lines_to_import:
             raise UserError(_('No valid lines to import. Please upload and validate Excel file first.'))
 
-        # # Group lines by product
-        # lines_by_product = {}
-        # for line in lines_to_import:
-        #     if line.product_id not in lines_by_product:
-        #         lines_by_product[line.product_id] = []
-        #     lines_by_product[line.product_id].append(line)
-        # Group lines by BOM
-        lines_by_bom = {}
+        # Group lines by (product, BOM) to handle cases where BOM.product_id might be False
+        lines_by_product_bom = {}
         for line in lines_to_import:
-            if line.bom_id not in lines_by_bom:
-                lines_by_bom[line.bom_id] = []
-            lines_by_bom[line.bom_id].append(line)
+            key = (line.product_id, line.bom_id)
+            if key not in lines_by_product_bom:
+                lines_by_product_bom[key] = []
+            lines_by_product_bom[key].append(line)
 
         production_schedule_model = self.env['mrp.production.schedule']
         forecast_model = self.env['mrp.product.forecast']
@@ -269,17 +268,17 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         imported_schedules = []
         imported_forecasts_count = 0
 
-        for bom, lines in lines_by_bom.items():
-            # Find or create production schedule
+        for (product, bom), lines in lines_by_product_bom.items():
+            # Find or create production schedule using product from line (not from BOM)
             production_schedule = production_schedule_model.search([
-                ('product_id', '=', bom.product_id.id),
+                ('product_id', '=', product.id),
                 ('bom_id', '=', bom.id),
                 ('warehouse_id', '=', self.warehouse_id.id),
             ], limit=1)
 
             if not production_schedule:
                 production_schedule = production_schedule_model.create({
-                    'product_id': bom.product_id.id,
+                    'product_id': product.id,
                     'bom_id': bom.id,
                     'warehouse_id': self.warehouse_id.id,
                     'company_id': self.warehouse_id.company_id.id,
@@ -311,21 +310,23 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 # Mark line as imported
                 line.write({'state': 'imported'})
 
+        total_schedules = len(lines_by_product_bom)
+        total_forecasts = len(lines_to_import)
+
         message = _('Successfully imported:\n'
                    '- %d production schedule(s) created/updated\n'
-                   '- %d forecast line(s) created/updated') % (
-                       len(imported_schedules) + len(lines_by_bom) - len(imported_schedules),
-                       imported_forecasts_count + len(lines_to_import) - imported_forecasts_count)
+                   '- %d forecast line(s) created/updated') % (total_schedules, total_forecasts)
 
+        # Show success notification
+        self.env.user.notify_success(message=message, title=_('Import Successful'))
+
+        # Return to wizard view to show updated state with imported lines in gray
         return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _('Import Successful'),
-                'message': message,
-                'type': 'success',
-                'sticky': False,
-            }
+            'type': 'ir.actions.act_window',
+            'res_model': 'bio.mrp.production.schedule.import.wizard',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'new',
         }
 
 
@@ -346,6 +347,11 @@ class MrpProductionSheduleLinessImportWizard(models.TransientModel):
         'product.product',
         string='Product',
         help='Product found by default_code')
+    product_tmpl_id = fields.Many2one(
+        'product.template',
+        related='product_id.product_tmpl_id',
+        readonly=True,
+        store=False)
     bom_id = fields.Many2one(
         'mrp.bom', "Bill of Materials",
         domain="[('product_tmpl_id', '=', product_tmpl_id), '|', ('product_id', '=', product_id), ('product_id', '=', False)]",
@@ -372,9 +378,8 @@ class MrpProductionSheduleLinessImportWizard(models.TransientModel):
     # Status
     state = fields.Selection([
         ('draft', 'Draft'),
-        ('found', 'Product Found'),
         ('product_not_found', 'Product Not Found'),
-        ('bill_not_found', 'BILL Not Found'),
+        ('bill_not_found', 'BOM Not Found'),
         ('ready_for_import', 'Ready For Import'),
         ('imported', 'Imported'),
         ('error', 'Error'),
