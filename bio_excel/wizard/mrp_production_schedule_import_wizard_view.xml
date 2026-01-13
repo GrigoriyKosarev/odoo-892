@@ -30,6 +30,17 @@
                         <field name="excel_file" filename="filename"/>
                         <field name="filename" invisible="1"/>
                     </group>
+                    <group string="Excel Column Configuration" name="column_config">
+                        <group>
+                            <field name="default_code_column"/>
+                            <field name="product_name_column"/>
+                        </group>
+                        <group>
+                            <field name="first_date_column"/>
+                        </group>
+                    </group>
+                    <!-- Invisible field for attrs in footer -->
+                    <field name="line_ids" invisible="1"/>
                     <group>
                         <field name="warehouse_id"/>
                     </group>
