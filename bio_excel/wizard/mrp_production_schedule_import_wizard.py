@@ -341,7 +341,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                    '- %d production schedule(s) created/updated\n'
                    '- %d forecast line(s) created/updated') % (total_schedules, total_forecasts)
 
-        # Return to wizard view with notification
+        # Show success notification and close wizard
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
@@ -350,13 +350,6 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 'message': message,
                 'type': 'success',
                 'sticky': False,
-                'next': {
-                    'type': 'ir.actions.act_window',
-                    'res_model': 'bio.mrp.production.schedule.import.wizard',
-                    'res_id': self.id,
-                    'view_mode': 'form',
-                    'target': 'new',
-                },
             }
         }
 
