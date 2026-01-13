@@ -68,11 +68,11 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
             self.product_name_column = 4
             self.first_date_column = 7
         elif self.manufacturing_period == 'week':
-            # For weekly: A=code, B=name, C onwards=dates
-            self.header_row_number = 1
-            self.default_code_column = 0
+            # For weekly: C=code, B=name, G onwards=dates
+            self.header_row_number = 9
+            self.default_code_column = 2
             self.product_name_column = 1
-            self.first_date_column = 2
+            self.first_date_column = 6
 
 
     def action_open_wizard(self):
