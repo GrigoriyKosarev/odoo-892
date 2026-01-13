@@ -4,17 +4,12 @@ from datetime import datetime
 from odoo import fields, models, _, api
 from odoo.exceptions import UserError
 
-# Try to import Excel parsing libraries
+# Try to import Excel parsing library
 try:
     import xlrd
     from xlrd import xldate
 except ImportError:
     xlrd = None
-
-try:
-    import openpyxl
-except ImportError:
-    openpyxl = None
 
 
 class MrpProductionSheduleImportWizard(models.TransientModel):
@@ -95,14 +90,8 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         if not self.excel_file:
             raise UserError(_('Please upload an Excel file.'))
 
-        # Check which library to use based on file extension
-        filename = self.filename or ''
-        use_xlrd = filename.endswith('.xls') or not filename.endswith('.xlsx')
-
-        if use_xlrd and not xlrd:
+        if not xlrd:
             raise UserError(_('Python library "xlrd" is not installed. Please install it: pip install xlrd'))
-        if not use_xlrd and not openpyxl:
-            raise UserError(_('Python library "openpyxl" is not installed. Please install it: pip install openpyxl'))
 
         # Decode the file
         try:
@@ -113,12 +102,8 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         # Clear existing lines
         self.line_ids.unlink()
 
-        if use_xlrd and xlrd:
-            # Use xlrd for .xls files
-            date_columns, lines_to_create = self._parse_excel_xlrd(file_data)
-        else:
-            # Use openpyxl for .xlsx files
-            date_columns, lines_to_create = self._parse_excel_openpyxl(file_data)
+        # Parse Excel file using xlrd
+        date_columns, lines_to_create = self._parse_excel_xlrd(file_data)
 
         # Create lines
         if lines_to_create:
@@ -244,91 +229,6 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
 
         return date_columns, lines_to_create
 
-    def _parse_excel_openpyxl(self, file_data):
-        """Parse Excel file using openpyxl library (.xlsx format)"""
-        try:
-            file_obj = io.BytesIO(file_data)
-            workbook = openpyxl.load_workbook(file_obj, data_only=True)
-            sheet = workbook.active
-        except Exception as e:
-            raise UserError(_('Error parsing Excel file with openpyxl: %s') % str(e))
-
-        # Parse header row (dates) - header_row_number is 1-based, so use it directly with iter_rows
-        header_row = list(sheet.iter_rows(min_row=self.header_row_number, max_row=self.header_row_number, values_only=True))[0]
-
-        # Extract dates from header starting from configured column
-        date_columns = []
-        for col_idx, cell_value in enumerate(header_row[self.first_date_column:], start=self.first_date_column):
-            if cell_value:
-                try:
-                    # Try to parse date from DD.MM.YYYY format
-                    if isinstance(cell_value, str):
-                        forecast_date = datetime.strptime(cell_value.strip(), '%d.%m.%Y').date()
-                    elif isinstance(cell_value, datetime):
-                        forecast_date = cell_value.date()
-                    else:
-                        continue
-                    date_columns.append((col_idx, forecast_date))
-                except ValueError:
-                    # Skip invalid dates
-                    continue
-
-        if not date_columns:
-            raise UserError(_('No valid dates found in header row %d starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % (self.header_row_number, self.first_date_column))
-
-        # Parse data rows (starting from row after header)
-        lines_to_create = []
-        for row_idx, row in enumerate(sheet.iter_rows(min_row=self.header_row_number + 1, values_only=True), start=self.header_row_number + 1):
-            # Get values from configured columns
-            default_code = row[self.default_code_column] if self.default_code_column < len(row) else None
-            product_name = row[self.product_name_column] if self.product_name_column < len(row) else ''
-
-            if not default_code:
-                continue  # Skip empty rows
-
-            # Find product by default_code
-            product = self.env['product.product'].search([('default_code', '=', str(default_code))], limit=1)
-
-            # Create line for each date column
-            for col_idx, forecast_date in date_columns:
-                qty = row[col_idx] if col_idx < len(row) else 0
-
-                # Skip if quantity is 0 or empty
-                if not qty:
-                    continue
-
-                try:
-                    forecast_qty = float(qty)
-                except (ValueError, TypeError):
-                    forecast_qty = 0.0
-
-                if forecast_qty <= 0:
-                    continue
-
-                line_vals = {
-                    'bio_mrp_production_schedule_wizard_id': self.id,
-                    'default_code': str(default_code),
-                    'product_name': str(product_name) if product_name else '',
-                    'forecast_date': forecast_date,
-                    'forecast_qty': forecast_qty,
-                }
-
-                if product:
-                    line_vals.update({
-                        'product_id': product.id,
-                        'state': 'found',
-                        'message': _('Product found'),
-                    })
-                else:
-                    line_vals.update({
-                        'state': 'not_found',
-                        'message': _('Product with code "%s" not found in database') % default_code,
-                    })
-
-                lines_to_create.append(line_vals)
-
-        return date_columns, lines_to_create
-
     def action_import(self):
         """Import validated lines to mrp.production.schedule"""
         self.ensure_one()
@@ -338,17 +238,71 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         if not lines_to_import:
             raise UserError(_('No valid lines to import. Please upload and validate Excel file first.'))
 
-        # TODO: Implement import to mrp.production.schedule
-        # Group by product and create/update production schedule records
+        # Group lines by product
+        lines_by_product = {}
+        for line in lines_to_import:
+            if line.product_id not in lines_by_product:
+                lines_by_product[line.product_id] = []
+            lines_by_product[line.product_id].append(line)
 
-        imported_count = len(lines_to_import)
+        production_schedule_model = self.env['mrp.production.schedule']
+        forecast_model = self.env['mrp.product.forecast']
+
+        imported_schedules = []
+        imported_forecasts_count = 0
+
+        for product, lines in lines_by_product.items():
+            # Find or create production schedule
+            production_schedule = production_schedule_model.search([
+                ('product_id', '=', product.id),
+                ('warehouse_id', '=', self.warehouse_id.id),
+            ], limit=1)
+
+            if not production_schedule:
+                production_schedule = production_schedule_model.create({
+                    'product_id': product.id,
+                    'warehouse_id': self.warehouse_id.id,
+                    'company_id': self.warehouse_id.company_id.id,
+                })
+                imported_schedules.append(production_schedule)
+
+            # Create or update forecasts for each date
+            for line in lines:
+                # Find existing forecast for this date
+                existing_forecast = forecast_model.search([
+                    ('production_schedule_id', '=', production_schedule.id),
+                    ('date', '=', line.forecast_date),
+                ], limit=1)
+
+                if existing_forecast:
+                    # Update existing forecast
+                    existing_forecast.write({
+                        'forecast_qty': line.forecast_qty,
+                    })
+                else:
+                    # Create new forecast
+                    forecast_model.create({
+                        'production_schedule_id': production_schedule.id,
+                        'date': line.forecast_date,
+                        'forecast_qty': line.forecast_qty,
+                    })
+                    imported_forecasts_count += 1
+
+                # Mark line as imported
+                line.write({'state': 'imported'})
+
+        message = _('Successfully imported:\n'
+                   '- %d production schedule(s) created/updated\n'
+                   '- %d forecast line(s) created/updated') % (
+                       len(imported_schedules) + len(lines_by_product) - len(imported_schedules),
+                       imported_forecasts_count + len(lines_to_import) - imported_forecasts_count)
 
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': _('Success'),
-                'message': _('%d lines imported successfully. Import logic will be fully implemented soon.') % imported_count,
+                'title': _('Import Successful'),
+                'message': message,
                 'type': 'success',
                 'sticky': False,
             }
