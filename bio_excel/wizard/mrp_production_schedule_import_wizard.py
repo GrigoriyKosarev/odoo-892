@@ -41,7 +41,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
     # Excel column configuration (0-indexed, A=0, B=1, C=2, etc.)
     header_row_number = fields.Integer(
         string='Header Row Number',
-        default=1,
+        default=4,
         required=True,
         help='Row number where column headers are located (1 = first row, 2 = second row, etc.)')
     default_code_column = fields.Integer(
@@ -66,7 +66,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         # You can customize these defaults based on your Excel templates
         if self.manufacturing_period == 'month':
             # For monthly: typically B=code, E=name, H onwards=dates
-            self.header_row_number = 1
+            self.header_row_number = 4
             self.default_code_column = 1
             self.product_name_column = 4
             self.first_date_column = 7
@@ -152,7 +152,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
 
         # Extract dates from header starting from configured column
         date_columns = []
-        for col_idx in range(self.first_date_column, len(header_row)):
+        for col_idx in range(self.first_date_column-1, len(header_row)):
             cell_value = header_row[col_idx]
             if cell_value:
                 try:
@@ -181,11 +181,17 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
             row = sheet.row_values(row_idx)
 
             # Get values from configured columns
-            default_code = row[self.default_code_column] if self.default_code_column < len(row) else None
-            product_name = row[self.product_name_column] if self.product_name_column < len(row) else ''
+            default_code = row[self.default_code_column-1] if self.default_code_column-1 < len(row) else None
+            product_name = row[self.product_name_column-1] if self.product_name_column-1 < len(row) else ''
 
             if not default_code:
                 continue  # Skip empty rows
+
+            if self.manufacturing_period == 'month' and not row[5]:
+                continue
+
+            if default_code == "vendor code":
+                continue
 
             # Convert default_code to string
             if isinstance(default_code, float):
@@ -233,6 +239,8 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                     })
 
                 lines_to_create.append(line_vals)
+
+            break
 
         return date_columns, lines_to_create
 
