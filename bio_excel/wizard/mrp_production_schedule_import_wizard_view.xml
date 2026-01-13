@@ -6,7 +6,10 @@
         <field name="name">bio.mrp.production.schedule.lines.import.wizard.tree</field>
         <field name="model">bio.mrp.production.schedule.lines.import.wizard</field>
         <field name="arch" type="xml">
-            <tree string="Import Lines" decoration-success="state=='found'" decoration-danger="state=='not_found'" decoration-muted="state=='imported'">
+            <tree string="Import Lines"
+                  decoration-success="state=='ready_for_import'"
+                  decoration-danger="state in ('product_not_found', 'bill_not_found')"
+                  decoration-muted="state=='imported'">
                 <field name="default_code"/>
                 <field name="product_name"/>
                 <field name="product_id"/>
@@ -56,8 +59,8 @@
                     <notebook>
                         <page string="Import Lines" name="lines">
                             <field name="line_ids" nolabel="1">
-                                <tree decoration-success="state=='found'"
-                                      decoration-danger="state=='not_found'"
+                                <tree decoration-success="state=='ready_for_import'"
+                                      decoration-danger="state in ('product_not_found', 'bill_not_found')"
                                       decoration-muted="state=='imported'">
                                     <field name="default_code"/>
 <!--                                    <field name="product_name"/>-->
@@ -66,8 +69,8 @@
                                     <field name="forecast_date"/>
                                     <field name="forecast_qty"/>
                                     <field name="state" widget="badge"
-                                           decoration-success="state=='found'"
-                                           decoration-danger="state=='not_found'"
+                                           decoration-success="state=='ready_for_import'"
+                                           decoration-danger="state in ('product_not_found', 'bill_not_found')"
                                            decoration-info="state=='imported'"/>
                                     <field name="message"/>
                                 </tree>
