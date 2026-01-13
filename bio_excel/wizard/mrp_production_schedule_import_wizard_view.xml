@@ -24,42 +24,16 @@
         <field name="model">bio.mrp.production.schedule.import.wizard</field>
         <field name="arch" type="xml">
             <form string="Import from Excel">
-                <sheet>
+                <group>
                     <group>
-                        <group>
-                            <field name="manufacturing_period"/>
-                        </group>
-                        <group>
-                            <field name="excel_file" filename="filename"/>
-                            <field name="filename" invisible="1"/>
-                        </group>
+                        <field name="manufacturing_period" widget="radio"/>
+                        <field name="excel_file" filename="filename"/>
+                        <field name="filename" invisible="1"/>
                     </group>
                     <group>
-                        <button string="Upload and Parse" type="object" name="action_upload"
-                                class="btn-primary" icon="fa-upload"
-                                help="Parse Excel file and validate products"/>
+                        <field name="warehouse_id"/>
                     </group>
-                    <notebook>
-                        <page string="Import Lines" name="lines">
-                            <field name="line_ids" nolabel="1">
-                                <tree decoration-success="state=='found'"
-                                      decoration-danger="state=='not_found'"
-                                      decoration-muted="state=='imported'">
-                                    <field name="default_code"/>
-                                    <field name="product_name"/>
-                                    <field name="product_id"/>
-                                    <field name="forecast_date"/>
-                                    <field name="forecast_qty"/>
-                                    <field name="state" widget="badge"
-                                           decoration-success="state=='found'"
-                                           decoration-danger="state=='not_found'"
-                                           decoration-info="state=='imported'"/>
-                                    <field name="message"/>
-                                </tree>
-                            </field>
-                        </page>
-                    </notebook>
-                </sheet>
+                </group>
                 <footer>
                     <button string="Import to MPS" type="object" name="action_import"
                             class="btn-primary" data-hotkey="q"
@@ -69,16 +43,5 @@
             </form>
         </field>
     </record>
-
-    <record id="action_bio_mrp_production_schedule_import_wizard" model="ir.actions.act_window">
-        <field name="name">Import from Excel</field>
-        <field name="res_model">bio.mrp.production.schedule.import.wizard</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
-    </record>
-
-<!--    <record id="" model="">-->
-
-<!--    </record>-->
 
 </odoo>

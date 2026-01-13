@@ -1,7 +1,6 @@
 import base64
 import io
-from datetime import datetime
-from odoo import fields, models, api, _
+from odoo import fields, models, _, api
 from odoo.exceptions import UserError
 
 try:
@@ -14,11 +13,17 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
     _name = 'bio.mrp.production.schedule.import.wizard'
     _description = 'MRP Production Shedule Import Wizard'
 
+    @api.model
+    def _default_warehouse_id(self):
+        return self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
+
     manufacturing_period = fields.Selection([
         ('month', 'Monthly'),
         ('week', 'Weekly')], string="Manufacturing Period",
         default='month', required=True,
         help="Default value for the time ranges in Master Production Schedule report.")
+    warehouse_id = fields.Many2one('stock.warehouse', 'Production Warehouse',
+        required=True, default=lambda self: self._default_warehouse_id())
     excel_file = fields.Binary(string='Excel File', required=True)
     filename = fields.Char(string='Filename')
     line_ids = fields.One2many(
