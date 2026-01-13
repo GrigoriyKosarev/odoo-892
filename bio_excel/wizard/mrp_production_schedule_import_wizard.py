@@ -223,11 +223,3 @@ class MrpProductionSheduleLinessImportWizard(models.TransientModel):
         string='Message',
         help='Status message or error description')
 
-    @api.depends('product_id', 'default_code', 'product_name')
-    def _compute_display_name(self):
-        for line in self:
-            if line.product_id:
-                line.display_name = f"[{line.default_code}] {line.product_id.name}"
-            else:
-                line.display_name = f"[{line.default_code}] {line.product_name or 'Unknown'}"
-
