@@ -265,8 +265,6 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                     })
                 lines_to_create.append(line_vals)
 
-            break
-
         return date_columns, lines_to_create
 
     def action_import(self):
@@ -337,9 +335,12 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         total_schedules = len(lines_by_product_bom)
         total_forecasts = len(lines_to_import)
 
-        message = _('Successfully imported %d production schedule(s) and %d forecast line(s). Close this wizard to see results in Master Production Schedule.') % (total_schedules, total_forecasts)
+        # Commit changes to database
+        self.env.cr.commit()
 
-        # Show success notification - wizard will close automatically
+        message = _('Successfully imported:\n- %d production schedule(s)\n- %d forecast line(s)\n\nCheck Master Production Schedule to see results.') % (total_schedules, total_forecasts)
+
+        # Close wizard and show notification
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
@@ -348,6 +349,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 'message': message,
                 'type': 'success',
                 'sticky': False,
+                'next': {'type': 'ir.actions.act_window_close'},
             }
         }
 
