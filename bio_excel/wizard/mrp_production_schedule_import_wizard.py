@@ -27,6 +27,8 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         help="Default value for the time ranges in Master Production Schedule report.")
     warehouse_id = fields.Many2one('stock.warehouse', 'Production Warehouse',
         required=True, default=lambda self: self._default_warehouse_id())
+    company_id = fields.Many2one('res.company', 'Company',
+        default=lambda self: self.env.company)
     excel_file = fields.Binary(string='Excel File', required=True)
     filename = fields.Char(string='Filename')
     line_ids = fields.One2many(
@@ -212,17 +214,27 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 }
 
                 if product:
-                    line_vals.update({
-                        'product_id': product.id,
-                        'state': 'found',
-                        'message': _('Product found'),
-                    })
+                    bom = self.env['mrp.bom'].search([
+                        ('product_tmpl_id', '=', product.product_tmpl_id.id),
+                        ('type', '=', 'normal')
+                    ], limit=1)
+                    if bom:
+                        line_vals.update({
+                            'product_id': product.id,
+                            'bom_id': bom.id,
+                            'state': 'ready_for_import',
+                            'message': _('All found'),
+                        })
+                    else:
+                        line_vals.update({
+                            'state': 'bill_not_found',
+                            'message': _('Bill of Materials with code "%s" not found in database') % default_code,
+                        })
                 else:
                     line_vals.update({
-                        'state': 'not_found',
+                        'state': 'product_not_found',
                         'message': _('Product with code "%s" not found in database') % default_code,
                     })
-
                 lines_to_create.append(line_vals)
 
             break
@@ -233,17 +245,23 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         """Import validated lines to mrp.production.schedule"""
         self.ensure_one()
 
-        lines_to_import = self.line_ids.filtered(lambda l: l.state == 'found')
+        lines_to_import = self.line_ids.filtered(lambda l: l.state == 'ready_for_import')
 
         if not lines_to_import:
             raise UserError(_('No valid lines to import. Please upload and validate Excel file first.'))
 
-        # Group lines by product
-        lines_by_product = {}
+        # # Group lines by product
+        # lines_by_product = {}
+        # for line in lines_to_import:
+        #     if line.product_id not in lines_by_product:
+        #         lines_by_product[line.product_id] = []
+        #     lines_by_product[line.product_id].append(line)
+        # Group lines by BOM
+        lines_by_bom = {}
         for line in lines_to_import:
-            if line.product_id not in lines_by_product:
-                lines_by_product[line.product_id] = []
-            lines_by_product[line.product_id].append(line)
+            if line.bom_id not in lines_by_bom:
+                lines_by_bom[line.bom_id] = []
+            lines_by_bom[line.bom_id].append(line)
 
         production_schedule_model = self.env['mrp.production.schedule']
         forecast_model = self.env['mrp.product.forecast']
@@ -251,16 +269,18 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         imported_schedules = []
         imported_forecasts_count = 0
 
-        for product, lines in lines_by_product.items():
+        for bom, lines in lines_by_bom.items():
             # Find or create production schedule
             production_schedule = production_schedule_model.search([
-                ('product_id', '=', product.id),
+                ('product_id', '=', bom.product_id.id),
+                ('bom_id', '=', bom.id),
                 ('warehouse_id', '=', self.warehouse_id.id),
             ], limit=1)
 
             if not production_schedule:
                 production_schedule = production_schedule_model.create({
-                    'product_id': product.id,
+                    'product_id': bom.product_id.id,
+                    'bom_id': bom.id,
                     'warehouse_id': self.warehouse_id.id,
                     'company_id': self.warehouse_id.company_id.id,
                 })
@@ -294,7 +314,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         message = _('Successfully imported:\n'
                    '- %d production schedule(s) created/updated\n'
                    '- %d forecast line(s) created/updated') % (
-                       len(imported_schedules) + len(lines_by_product) - len(imported_schedules),
+                       len(imported_schedules) + len(lines_by_bom) - len(imported_schedules),
                        imported_forecasts_count + len(lines_to_import) - imported_forecasts_count)
 
         return {
@@ -319,12 +339,17 @@ class MrpProductionSheduleLinessImportWizard(models.TransientModel):
         string='Wizard',
         required=True,
         ondelete='cascade')
-
+    company_id = fields.Many2one('res.company', 'Company',
+        related='bio_mrp_production_schedule_wizard_id.company_id')
     # Product information
     product_id = fields.Many2one(
         'product.product',
         string='Product',
         help='Product found by default_code')
+    bom_id = fields.Many2one(
+        'mrp.bom', "Bill of Materials",
+        domain="[('product_tmpl_id', '=', product_tmpl_id), '|', ('product_id', '=', product_id), ('product_id', '=', False)]",
+        check_company=True)
     default_code = fields.Char(
         string='Product Code',
         required=True,
@@ -348,7 +373,9 @@ class MrpProductionSheduleLinessImportWizard(models.TransientModel):
     state = fields.Selection([
         ('draft', 'Draft'),
         ('found', 'Product Found'),
-        ('not_found', 'Product Not Found'),
+        ('product_not_found', 'Product Not Found'),
+        ('bill_not_found', 'BILL Not Found'),
+        ('ready_for_import', 'Ready For Import'),
         ('imported', 'Imported'),
         ('error', 'Error'),
     ], string='Status', default='draft', required=True)

@@ -33,6 +33,7 @@
                         <group>
                             <field name="excel_file" filename="filename"/>
                             <field name="filename" invisible="1"/>
+                            <field name="company_id"/>
                         </group>
                     </group>
                     <group string="Excel Column Configuration" name="column_config">
@@ -59,8 +60,9 @@
                                       decoration-danger="state=='not_found'"
                                       decoration-muted="state=='imported'">
                                     <field name="default_code"/>
-                                    <field name="product_name"/>
+<!--                                    <field name="product_name"/>-->
                                     <field name="product_id"/>
+                                    <field name="bom_id"/>
                                     <field name="forecast_date"/>
                                     <field name="forecast_qty"/>
                                     <field name="state" widget="badge"
