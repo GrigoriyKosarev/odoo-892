@@ -341,16 +341,23 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                    '- %d production schedule(s) created/updated\n'
                    '- %d forecast line(s) created/updated') % (total_schedules, total_forecasts)
 
-        # Show success notification
-        self.env.user.notify_success(message=message, title=_('Import Successful'))
-
-        # Return to wizard view to show updated state with imported lines in gray
+        # Return to wizard view with notification
         return {
-            'type': 'ir.actions.act_window',
-            'res_model': 'bio.mrp.production.schedule.import.wizard',
-            'res_id': self.id,
-            'view_mode': 'form',
-            'target': 'new',
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Import Successful'),
+                'message': message,
+                'type': 'success',
+                'sticky': False,
+                'next': {
+                    'type': 'ir.actions.act_window',
+                    'res_model': 'bio.mrp.production.schedule.import.wizard',
+                    'res_id': self.id,
+                    'view_mode': 'form',
+                    'target': 'new',
+                },
+            }
         }
 
 
