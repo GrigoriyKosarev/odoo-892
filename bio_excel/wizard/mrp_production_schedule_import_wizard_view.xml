@@ -37,6 +37,7 @@
                     </group>
                     <group string="Excel Column Configuration" name="column_config">
                         <group>
+                            <field name="header_row_number"/>
                             <field name="default_code_column"/>
                             <field name="product_name_column"/>
                         </group>

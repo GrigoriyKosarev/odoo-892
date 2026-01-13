@@ -39,19 +39,24 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         inverse_name='bio_mrp_production_schedule_wizard_id', string='Lines' )
 
     # Excel column configuration (0-indexed, A=0, B=1, C=2, etc.)
+    header_row_number = fields.Integer(
+        string='Header Row Number',
+        default=1,
+        required=True,
+        help='Row number where column headers are located (1 = first row, 2 = second row, etc.)')
     default_code_column = fields.Integer(
         string='Product Code Column',
-        default=0,
+        default=1,
         required=True,
         help='Column number for product default_code (A=0, B=1, C=2, etc.)')
     product_name_column = fields.Integer(
         string='Product Name Column',
-        default=1,
+        default=4,
         required=True,
         help='Column number for product name (A=0, B=1, C=2, etc.)')
     first_date_column = fields.Integer(
         string='First Date Column',
-        default=2,
+        default=7,
         required=True,
         help='Column number where dates start (A=0, B=1, C=2, etc.)')
 
@@ -60,12 +65,14 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         """Update column configuration based on manufacturing period"""
         # You can customize these defaults based on your Excel templates
         if self.manufacturing_period == 'month':
-            # For monthly: typically A=code, B=name, C onwards=dates
-            self.default_code_column = 0
-            self.product_name_column = 1
-            self.first_date_column = 2
+            # For monthly: typically B=code, E=name, H onwards=dates
+            self.header_row_number = 1
+            self.default_code_column = 1
+            self.product_name_column = 4
+            self.first_date_column = 7
         elif self.manufacturing_period == 'week':
-            # For weekly: same structure but different date ranges
+            # For weekly: A=code, B=name, C onwards=dates
+            self.header_row_number = 1
             self.default_code_column = 0
             self.product_name_column = 1
             self.first_date_column = 2
@@ -134,11 +141,14 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         except Exception as e:
             raise UserError(_('Error parsing Excel file with xlrd: %s') % str(e))
 
-        # Parse header row (dates)
-        if sheet.nrows < 1:
-            raise UserError(_('Excel file is empty'))
+        # Convert header row number from 1-based to 0-based index
+        header_row_idx = self.header_row_number - 1
 
-        header_row = sheet.row_values(0)
+        # Parse header row (dates)
+        if sheet.nrows < header_row_idx + 1:
+            raise UserError(_('Excel file does not have enough rows. Header row %d not found.') % self.header_row_number)
+
+        header_row = sheet.row_values(header_row_idx)
 
         # Extract dates from header starting from configured column
         date_columns = []
@@ -163,11 +173,11 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                     continue
 
         if not date_columns:
-            raise UserError(_('No valid dates found in header row starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % self.first_date_column)
+            raise UserError(_('No valid dates found in header row %d starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % (self.header_row_number, self.first_date_column))
 
-        # Parse data rows (starting from row 1, since row 0 is header)
+        # Parse data rows (starting from row after header)
         lines_to_create = []
-        for row_idx in range(1, sheet.nrows):
+        for row_idx in range(header_row_idx + 1, sheet.nrows):
             row = sheet.row_values(row_idx)
 
             # Get values from configured columns
@@ -235,8 +245,8 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         except Exception as e:
             raise UserError(_('Error parsing Excel file with openpyxl: %s') % str(e))
 
-        # Parse header row (dates)
-        header_row = list(sheet.iter_rows(min_row=1, max_row=1, values_only=True))[0]
+        # Parse header row (dates) - header_row_number is 1-based, so use it directly with iter_rows
+        header_row = list(sheet.iter_rows(min_row=self.header_row_number, max_row=self.header_row_number, values_only=True))[0]
 
         # Extract dates from header starting from configured column
         date_columns = []
@@ -256,11 +266,11 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                     continue
 
         if not date_columns:
-            raise UserError(_('No valid dates found in header row starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % self.first_date_column)
+            raise UserError(_('No valid dates found in header row %d starting from column %d. Expected format: DD.MM.YYYY (e.g., 01.12.2025)') % (self.header_row_number, self.first_date_column))
 
-        # Parse data rows (starting from row 2)
+        # Parse data rows (starting from row after header)
         lines_to_create = []
-        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+        for row_idx, row in enumerate(sheet.iter_rows(min_row=self.header_row_number + 1, values_only=True), start=self.header_row_number + 1):
             # Get values from configured columns
             default_code = row[self.default_code_column] if self.default_code_column < len(row) else None
             product_name = row[self.product_name_column] if self.product_name_column < len(row) else ''
