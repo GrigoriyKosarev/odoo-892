@@ -73,50 +73,95 @@ class MrpProductionSchedule(models.Model):
             'num_format': 'dd.mm.yyyy'
         })
 
-        # Write header row
-        headers = ['Product Code', 'Product Name', 'BOM', 'Warehouse', 'Date', 'Forecast Qty', 'To Replenish']
-        for col, header in enumerate(headers):
-            worksheet.write(0, col, header, header_format)
+        field_label_format = workbook.add_format({
+            'bold': True,
+            'border': 1,
+            'align': 'left',
+            'valign': 'vcenter'
+        })
+
+        data_format = workbook.add_format({
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter'
+        })
+
+        # Collect all unique dates (periods) from all selected production schedules
+        all_dates = set()
+        for prod_schedule in production_schedule_ids:
+            for forecast in prod_schedule.forecast_ids:
+                if forecast.date:
+                    all_dates.add(forecast.date)
+
+        # Sort dates
+        sorted_dates = sorted(list(all_dates))
+
+        if not sorted_dates:
+            raise UserError(_('No forecast dates found in selected production schedules.'))
+
+        # Write header row with period dates
+        col = 0
+        worksheet.write(0, col, '', header_format)  # Empty cell for field names
+        col += 1
+
+        for date in sorted_dates:
+            worksheet.write(0, col, date, date_format)
+            col += 1
+
+        # Add Total column
+        worksheet.write(0, col, 'Total', header_format)
+        total_col = col
 
         # Set column widths
-        worksheet.set_column(0, 0, 15)  # Product Code
-        worksheet.set_column(1, 1, 30)  # Product Name
-        worksheet.set_column(2, 2, 30)  # BOM
-        worksheet.set_column(3, 3, 20)  # Warehouse
-        worksheet.set_column(4, 4, 12)  # Date
-        worksheet.set_column(5, 6, 15)  # Quantities
+        worksheet.set_column(0, 0, 30)  # Field name column
+        worksheet.set_column(1, total_col, 12)  # Data columns
 
-        # Write data rows
+        # Write data rows - 3 rows per production schedule
         row = 1
         for prod_schedule in production_schedule_ids:
             product = prod_schedule.product_id
-            bom = prod_schedule.bom_id
-            warehouse = prod_schedule.warehouse_id
 
-            # Get all forecast lines for this production schedule
-            forecast_lines = prod_schedule.forecast_ids.sorted('date')
+            # Create a dict of date -> forecast_qty for quick lookup
+            forecast_by_date = {}
+            for forecast in prod_schedule.forecast_ids:
+                if forecast.date:
+                    forecast_by_date[forecast.date] = forecast.forecast_qty or 0.0
 
-            if not forecast_lines:
-                # If no forecasts, write one row with product info
-                worksheet.write(row, 0, product.default_code or '', data_format)
-                worksheet.write(row, 1, product.name or '', data_format)
-                worksheet.write(row, 2, bom.display_name or '', data_format)
-                worksheet.write(row, 3, warehouse.name or '', data_format)
-                worksheet.write(row, 4, '', data_format)
-                worksheet.write(row, 5, 0.0, number_format)
-                worksheet.write(row, 6, 0.0, number_format)
-                row += 1
-            else:
-                # Write one row per forecast line
-                for forecast in forecast_lines:
-                    worksheet.write(row, 0, product.default_code or '', data_format)
-                    worksheet.write(row, 1, product.name or '', data_format)
-                    worksheet.write(row, 2, bom.display_name or '', data_format)
-                    worksheet.write(row, 3, warehouse.name or '', data_format)
-                    worksheet.write(row, 4, forecast.date, date_format)
-                    worksheet.write(row, 5, forecast.forecast_qty or 0.0, number_format)
-                    worksheet.write(row, 6, forecast.replenish_qty or 0.0, number_format)
-                    row += 1
+            # Row 1: Product Internal Reference
+            worksheet.write(row, 0, 'Product Internal Reference', field_label_format)
+            col = 1
+            for date in sorted_dates:
+                worksheet.write(row, col, product.default_code or '', data_format)
+                col += 1
+            worksheet.write(row, total_col, product.default_code or '', data_format)
+            row += 1
+
+            # Row 2: Product Name
+            worksheet.write(row, 0, 'Product Name', field_label_format)
+            col = 1
+            for date in sorted_dates:
+                worksheet.write(row, col, product.name or '', data_format)
+                col += 1
+            worksheet.write(row, total_col, product.name or '', data_format)
+            row += 1
+
+            # Row 3: Indirect Demand Forecast per period
+            worksheet.write(row, 0, 'Indirect Demand Forecast per period', field_label_format)
+            col = 1
+            total_forecast = 0.0
+
+            for date in sorted_dates:
+                forecast_qty = forecast_by_date.get(date, 0.0)
+                worksheet.write(row, col, forecast_qty, number_format)
+                total_forecast += forecast_qty
+                col += 1
+
+            # Write total
+            worksheet.write(row, total_col, total_forecast, number_format)
+            row += 1
+
+            # Add empty row between products
+            row += 1
 
         # Close workbook and get file data
         workbook.close()
