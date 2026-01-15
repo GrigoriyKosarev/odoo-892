@@ -12,13 +12,18 @@ class MrpProductionSchedule(models.Model):
     excel_file = fields.Binary('Excel File', readonly=True)
     excel_filename = fields.Char('Filename', readonly=True)
 
+    @api.model
     def action_export_product_demand(self):
         """Export Product Demand data to Excel"""
         if not xlsxwriter:
             raise UserError(_('Please install xlsxwriter python library to use this feature.\n'
                             'Command: pip install xlsxwriter'))
 
-        self.ensure_one()
+        # Get production schedules from context or search all
+        production_schedule_ids = self.search([])
+
+        if not production_schedule_ids:
+            raise UserError(_('No production schedules found to export.'))
 
         # Create Excel file in memory
         output = BytesIO()
@@ -54,105 +59,57 @@ class MrpProductionSchedule(models.Model):
             'num_format': '#,##0.00'
         })
 
-        # Get production schedules with current filters
-        production_schedule_ids = self.production_schedule_ids.filtered(
-            lambda ps: self.product_id and ps.product_id == self.product_id or not self.product_id
-        )
+        date_format = workbook.add_format({
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter',
+            'num_format': 'dd.mm.yyyy'
+        })
 
-        if not production_schedule_ids:
-            raise UserError(_('No data available to export. Please check your filters.'))
-
-        # Get date ranges (periods)
-        date_ranges = self._get_date_range()
-
-        # Write header row with periods
-        col = 0
-        worksheet.write(0, col, '', header_format)  # Empty cell for field names
-
-        period_columns = []
-        for date_range in date_ranges:
-            col += 1
-            date_start = date_range[0]
-            date_stop = date_range[1]
-            period_label = f"{date_start.strftime('%Y-%m-%d')} - {date_stop.strftime('%Y-%m-%d')}"
-            worksheet.write(0, col, period_label, header_format)
-            period_columns.append((date_start, date_stop))
-
-        # Add Total column
-        col += 1
-        worksheet.write(0, col, 'Total', header_format)
-        total_col = col
+        # Write header row
+        headers = ['Product Code', 'Product Name', 'BOM', 'Warehouse', 'Date', 'Forecast Qty', 'Indirect Demand Qty']
+        for col, header in enumerate(headers):
+            worksheet.write(0, col, header, header_format)
 
         # Set column widths
-        worksheet.set_column(0, 0, 30)  # Field name column
-        worksheet.set_column(1, total_col, 15)  # Data columns
+        worksheet.set_column(0, 0, 15)  # Product Code
+        worksheet.set_column(1, 1, 30)  # Product Name
+        worksheet.set_column(2, 2, 30)  # BOM
+        worksheet.set_column(3, 3, 20)  # Warehouse
+        worksheet.set_column(4, 4, 12)  # Date
+        worksheet.set_column(5, 6, 15)  # Quantities
 
-        # Process each production schedule (product)
+        # Write data rows
         row = 1
         for prod_schedule in production_schedule_ids:
             product = prod_schedule.product_id
+            bom = prod_schedule.bom_id
+            warehouse = prod_schedule.warehouse_id
 
-            # Row 1: Product Internal Reference
-            worksheet.write(row, 0, 'Product Internal Reference', field_label_format)
-            col = 1
-            for _ in period_columns:
-                worksheet.write(row, col, product.default_code or '', data_format)
-                col += 1
-            worksheet.write(row, total_col, product.default_code or '', data_format)
-            row += 1
+            # Get all forecast lines for this production schedule
+            forecast_lines = prod_schedule.forecast_ids.sorted('date')
 
-            # Row 2: Product Name
-            worksheet.write(row, 0, 'Product Name', field_label_format)
-            col = 1
-            for _ in period_columns:
-                worksheet.write(row, col, product.name or '', data_format)
-                col += 1
-            worksheet.write(row, total_col, product.name or '', data_format)
-            row += 1
-
-            # Row 3: Indirect Demand Forecast per period
-            worksheet.write(row, 0, 'Indirect Demand Forecast per period', field_label_format)
-            col = 1
-            total_indirect_demand = 0.0
-
-            # Get forecast values for each period
-            for date_start, date_stop in period_columns:
-                # Get forecast lines for this period
-                forecast_lines = prod_schedule.forecast_ids.filtered(
-                    lambda f: f.date >= date_start and f.date <= date_stop
-                )
-
-                # Sum indirect demand for this period
-                period_indirect_demand = sum(forecast_lines.mapped('indirect_demand_qty'))
-                worksheet.write(row, col, period_indirect_demand, number_format)
-                total_indirect_demand += period_indirect_demand
-                col += 1
-
-            # Write total indirect demand
-            worksheet.write(row, total_col, total_indirect_demand, number_format)
-            row += 1
-
-            # Row 4: Total Indirect Demand Forecast per period
-            # This appears to be a cumulative or summary row
-            # Based on the requirement, this might be the same as above or calculated differently
-            worksheet.write(row, 0, 'Total Indirect Demand Forecast per period', field_label_format)
-            col = 1
-            cumulative_total = 0.0
-
-            for date_start, date_stop in period_columns:
-                forecast_lines = prod_schedule.forecast_ids.filtered(
-                    lambda f: f.date >= date_start and f.date <= date_stop
-                )
-                period_total = sum(forecast_lines.mapped('indirect_demand_qty'))
-                cumulative_total += period_total
-                worksheet.write(row, col, cumulative_total, number_format)
-                col += 1
-
-            worksheet.write(row, total_col, cumulative_total, number_format)
-            row += 1
-
-            # Add empty row between products
-            row += 1
+            if not forecast_lines:
+                # If no forecasts, write one row with product info
+                worksheet.write(row, 0, product.default_code or '', data_format)
+                worksheet.write(row, 1, product.name or '', data_format)
+                worksheet.write(row, 2, bom.display_name or '', data_format)
+                worksheet.write(row, 3, warehouse.name or '', data_format)
+                worksheet.write(row, 4, '', data_format)
+                worksheet.write(row, 5, 0.0, number_format)
+                worksheet.write(row, 6, 0.0, number_format)
+                row += 1
+            else:
+                # Write one row per forecast line
+                for forecast in forecast_lines:
+                    worksheet.write(row, 0, product.default_code or '', data_format)
+                    worksheet.write(row, 1, product.name or '', data_format)
+                    worksheet.write(row, 2, bom.display_name or '', data_format)
+                    worksheet.write(row, 3, warehouse.name or '', data_format)
+                    worksheet.write(row, 4, forecast.date, date_format)
+                    worksheet.write(row, 5, forecast.forecast_qty or 0.0, number_format)
+                    worksheet.write(row, 6, forecast.indirect_demand_qty or 0.0, number_format)
+                    row += 1
 
         # Close workbook and get file data
         workbook.close()
@@ -163,15 +120,20 @@ class MrpProductionSchedule(models.Model):
         # Encode file to base64
         excel_file = base64.b64encode(file_data)
 
-        # Update wizard with file
-        self.write({
-            'excel_file': excel_file,
-            'excel_filename': 'product_demand_report.xlsx'
+        # Create attachment for download
+        filename = 'production_schedule_export.xlsx'
+        attachment = self.env['ir.attachment'].create({
+            'name': filename,
+            'type': 'binary',
+            'datas': excel_file,
+            'res_model': 'mrp.production.schedule',
+            'res_id': 0,
+            'mimetype': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         })
 
         # Return action to download file
         return {
             'type': 'ir.actions.act_url',
-            'url': f'/web/content?model=mrp.production.schedule&id={self.id}&field=excel_file&filename={self.excel_filename}&download=true',
+            'url': f'/web/content/{attachment.id}?download=true',
             'target': 'self',
         }
