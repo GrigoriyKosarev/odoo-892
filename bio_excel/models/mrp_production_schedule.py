@@ -71,7 +71,7 @@ class MrpProductionSchedule(models.Model):
         })
 
         # Write header row
-        headers = ['Product Code', 'Product Name', 'BOM', 'Warehouse', 'Date', 'Forecast Qty', 'Indirect Demand Qty']
+        headers = ['Product Code', 'Product Name', 'BOM', 'Warehouse', 'Date', 'Forecast Qty', 'To Replenish']
         for col, header in enumerate(headers):
             worksheet.write(0, col, header, header_format)
 
@@ -112,7 +112,7 @@ class MrpProductionSchedule(models.Model):
                     worksheet.write(row, 3, warehouse.name or '', data_format)
                     worksheet.write(row, 4, forecast.date, date_format)
                     worksheet.write(row, 5, forecast.forecast_qty or 0.0, number_format)
-                    worksheet.write(row, 6, forecast.indirect_demand_qty or 0.0, number_format)
+                    worksheet.write(row, 6, forecast.replenish_qty or 0.0, number_format)
                     row += 1
 
         # Close workbook and get file data
