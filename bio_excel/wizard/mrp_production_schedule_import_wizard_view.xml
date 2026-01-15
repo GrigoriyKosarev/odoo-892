@@ -43,7 +43,6 @@
                         <group>
                             <field name="header_row_number"/>
                             <field name="default_code_column"/>
-<!--                            <field name="product_name_column"/>-->
                         </group>
                         <group>
                             <field name="first_date_column"/>

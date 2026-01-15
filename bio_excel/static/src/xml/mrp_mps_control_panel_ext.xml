@@ -13,13 +13,13 @@
             <button type="button"
                     class="btn btn-secondary o_mps_import_excel"
                     t-on-click.stop="_onClickImportExcel">
-                <i class="fa fa-download"/> Import from Excel
+                <i class="fa fa-upload"/> Import from Excel
             </button>
             <!--ODOO-894-->
             <button type="button"
-                    class="btn btn-secondary o_mps_import_excel"
+                    class="btn btn-secondary o_mps_export_excel"
                     t-on-click.stop="_onClickExportExcel">
-                <i class="fa fa-upload"/> Export to Excel
+                <i class="fa fa-download"/> Export to Excel
             </button>
         </xpath>
     </t>

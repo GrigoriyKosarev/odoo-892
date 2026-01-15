@@ -46,11 +46,6 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         default=1,
         required=True,
         help='Column number for product default_code (A=0, B=1, C=2, etc.)')
-    product_name_column = fields.Integer(
-        string='Product Name Column',
-        default=4,
-        required=True,
-        help='Column number for product name (A=0, B=1, C=2, etc.)')
     first_date_column = fields.Integer(
         string='First Date Column',
         default=7,
@@ -62,16 +57,14 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         """Update column configuration based on manufacturing period"""
         # You can customize these defaults based on your Excel templates
         if self.manufacturing_period == 'month':
-            # For monthly: typically B=code, E=name, H onwards=dates
+            # For monthly: typically B=code, H onwards=dates
             self.header_row_number = 4
             self.default_code_column = 1
-            self.product_name_column = 4
             self.first_date_column = 7
         elif self.manufacturing_period == 'week':
-            # For weekly: A=code, B=name, C onwards=dates
+            # For weekly: C=code, G onwards=dates
             self.header_row_number = 9
             self.default_code_column = 2
-            self.product_name_column = 1
             self.first_date_column = 6
 
 
@@ -169,7 +162,6 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
 
             # Get values from configured columns
             default_code = row[self.default_code_column-1] if self.default_code_column-1 < len(row) else None
-            product_name = row[self.product_name_column-1] if self.product_name_column-1 < len(row) else ''
 
             if not default_code:
                 continue  # Skip empty rows

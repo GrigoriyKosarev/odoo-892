@@ -26,17 +26,33 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
         });
     },
 
-    _onClickExportExcel(ev) {
-        // console.log('[bio_excel] Import from Excel clicked');
-        this.env.model.action.doAction({
-            name: _t('Export from Excel'),
-            type: 'ir.actions.act_window',
-            res_model: 'mrp.production.schedule',
-            views: [[false, 'form']],
-            target: 'new',
-        }, {
-            onClose: () => this.env.model.load(),
-        });
+    async _onClickExportExcel(ev) {
+        const orm = this.env.services.orm;
+        try {
+            // Get current MPS state context
+            const context = {
+                ...this.env.model.state.context,
+            };
+
+            // Call export method - this will create and download Excel file
+            const action = await orm.call(
+                'mrp.production.schedule',
+                'action_export_product_demand',
+                [[]],
+                { context: context }
+            );
+
+            if (action && action.url) {
+                window.location.href = action.url;
+            } else if (action) {
+                await this.env.services.action.doAction(action);
+            }
+        } catch (error) {
+            this.env.services.notification.add(
+                error.message || _t('Export failed'),
+                { type: 'danger' }
+            );
+        }
     }
 });
 
