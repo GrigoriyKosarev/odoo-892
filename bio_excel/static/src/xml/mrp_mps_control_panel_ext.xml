@@ -9,10 +9,17 @@
 
         <!-- Add Import button after "Add a Product" button -->
         <xpath expr="//button[@t-on-click.stop='_onClickCreate']" position="after">
+            <!--ODOO-892-->
             <button type="button"
                     class="btn btn-secondary o_mps_import_excel"
                     t-on-click.stop="_onClickImportExcel">
                 <i class="fa fa-download"/> Import from Excel
+            </button>
+            <!--ODOO-894-->
+            <button type="button"
+                    class="btn btn-secondary o_mps_import_excel"
+                    t-on-click.stop="_onClickExportExcel">
+                <i class="fa fa-upload"/> Export to Excel
             </button>
         </xpath>
     </t>
