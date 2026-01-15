@@ -13,8 +13,12 @@ class MrpProductionSchedule(models.Model):
     excel_filename = fields.Char('Filename', readonly=True)
 
     @api.model
-    def action_export_product_demand(self):
-        """Export Product Demand data to Excel"""
+    def action_export_product_demand(self, ids=None):
+        """Export Product Demand data to Excel
+
+        Args:
+            ids: Optional list of record IDs (not used, for compatibility with JS call)
+        """
         if not xlsxwriter:
             raise UserError(_('Please install xlsxwriter python library to use this feature.\n'
                             'Command: pip install xlsxwriter'))
