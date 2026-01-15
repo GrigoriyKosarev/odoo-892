@@ -28,15 +28,29 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
 
     async _onClickExportExcel(ev) {
         const orm = this.env.services.orm;
+        const notification = this.env.services.notification;
+
         try {
+            // Get selected record IDs (similar to downloadExport in original MPS code)
+            const selectedIds = Array.from(this.model.selectedRecords);
+
+            // If no records selected, show warning
+            if (selectedIds.length === 0) {
+                notification.add(
+                    _t('Please select at least one production schedule to export.'),
+                    { type: 'warning' }
+                );
+                return;
+            }
+
             // Get context from props (similar to onExportData in original MPS code)
             const context = this.props.context || {};
 
-            // Call export method - this will create and download Excel file
+            // Call export method with selected IDs
             const action = await orm.call(
                 'mrp.production.schedule',
                 'action_export_product_demand',
-                [[]],
+                [selectedIds],
                 { context: context }
             );
 
@@ -46,7 +60,7 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
                 await this.env.services.action.doAction(action);
             }
         } catch (error) {
-            this.env.services.notification.add(
+            notification.add(
                 error.message || _t('Export failed'),
                 { type: 'danger' }
             );

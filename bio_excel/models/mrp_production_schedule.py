@@ -17,14 +17,17 @@ class MrpProductionSchedule(models.Model):
         """Export Product Demand data to Excel
 
         Args:
-            ids: Optional list of record IDs (not used, for compatibility with JS call)
+            ids: List of production schedule IDs to export
         """
         if not xlsxwriter:
             raise UserError(_('Please install xlsxwriter python library to use this feature.\n'
                             'Command: pip install xlsxwriter'))
 
-        # Get production schedules from context or search all
-        production_schedule_ids = self.search([])
+        # Get production schedules - use provided IDs or all if empty
+        if ids:
+            production_schedule_ids = self.browse(ids)
+        else:
+            production_schedule_ids = self.search([])
 
         if not production_schedule_ids:
             raise UserError(_('No production schedules found to export.'))
