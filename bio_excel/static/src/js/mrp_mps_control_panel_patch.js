@@ -29,10 +29,8 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
     async _onClickExportExcel(ev) {
         const orm = this.env.services.orm;
         try {
-            // Get current MPS state context
-            const context = {
-                ...this.env.model.state.context,
-            };
+            // Get context from props (similar to onExportData in original MPS code)
+            const context = this.props.context || {};
 
             // Call export method - this will create and download Excel file
             const action = await orm.call(
