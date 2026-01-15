@@ -14,11 +14,24 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
      * @private
      */
     _onClickImportExcel(ev) {
-        console.log('[bio_excel] Import from Excel clicked');
+        // console.log('[bio_excel] Import from Excel clicked');
         this.env.model.action.doAction({
             name: _t('Import from Excel'),
             type: 'ir.actions.act_window',
             res_model: 'bio.mrp.production.schedule.import.wizard',
+            views: [[false, 'form']],
+            target: 'new',
+        }, {
+            onClose: () => this.env.model.load(),
+        });
+    },
+
+    _onClickExportExcel(ev) {
+        // console.log('[bio_excel] Import from Excel clicked');
+        this.env.model.action.doAction({
+            name: _t('Export from Excel'),
+            type: 'ir.actions.act_window',
+            res_model: 'mrp.production.schedule',
             views: [[false, 'form']],
             target: 'new',
         }, {
