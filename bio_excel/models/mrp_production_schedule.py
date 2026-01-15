@@ -99,11 +99,14 @@ class MrpProductionSchedule(models.Model):
         if not sorted_dates:
             raise UserError(_('No forecast dates found in selected production schedules.'))
 
-        # Write header row with period dates
+        # Write header row
         col = 0
-        worksheet.write(0, col, '', header_format)  # Empty cell for field names
+        worksheet.write(0, col, 'Product Internal Reference', header_format)
+        col += 1
+        worksheet.write(0, col, 'Product Name', header_format)
         col += 1
 
+        # Write period date headers
         for date in sorted_dates:
             worksheet.write(0, col, date, date_format)
             col += 1
@@ -113,10 +116,11 @@ class MrpProductionSchedule(models.Model):
         total_col = col
 
         # Set column widths
-        worksheet.set_column(0, 0, 30)  # Field name column
-        worksheet.set_column(1, total_col, 12)  # Data columns
+        worksheet.set_column(0, 0, 20)  # Product Internal Reference
+        worksheet.set_column(1, 1, 30)  # Product Name
+        worksheet.set_column(2, total_col, 12)  # Date columns and Total
 
-        # Write data rows - 3 rows per production schedule
+        # Write data rows - one row per production schedule
         row = 1
         for prod_schedule in production_schedule_ids:
             product = prod_schedule.product_id
@@ -127,29 +131,15 @@ class MrpProductionSchedule(models.Model):
                 if forecast.date:
                     forecast_by_date[forecast.date] = forecast.forecast_qty or 0.0
 
-            # Row 1: Product Internal Reference
-            worksheet.write(row, 0, 'Product Internal Reference', field_label_format)
-            col = 1
-            for date in sorted_dates:
-                worksheet.write(row, col, product.default_code or '', data_format)
-                col += 1
-            worksheet.write(row, total_col, product.default_code or '', data_format)
-            row += 1
+            # Write product info
+            col = 0
+            worksheet.write(row, col, product.default_code or '', data_format)
+            col += 1
+            worksheet.write(row, col, product.name or '', data_format)
+            col += 1
 
-            # Row 2: Product Name
-            worksheet.write(row, 0, 'Product Name', field_label_format)
-            col = 1
-            for date in sorted_dates:
-                worksheet.write(row, col, product.name or '', data_format)
-                col += 1
-            worksheet.write(row, total_col, product.name or '', data_format)
-            row += 1
-
-            # Row 3: Indirect Demand Forecast per period
-            worksheet.write(row, 0, 'Indirect Demand Forecast per period', field_label_format)
-            col = 1
+            # Write forecast quantities for each period
             total_forecast = 0.0
-
             for date in sorted_dates:
                 forecast_qty = forecast_by_date.get(date, 0.0)
                 worksheet.write(row, col, forecast_qty, number_format)
@@ -158,9 +148,6 @@ class MrpProductionSchedule(models.Model):
 
             # Write total
             worksheet.write(row, total_col, total_forecast, number_format)
-            row += 1
-
-            # Add empty row between products
             row += 1
 
         # Close workbook and get file data
