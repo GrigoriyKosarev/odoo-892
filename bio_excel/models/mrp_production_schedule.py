@@ -32,6 +32,37 @@ class MrpProductionSchedule(models.Model):
         if not production_schedule_ids:
             raise UserError(_('No production schedules found to export.'))
 
+        # Get computed state with indirect_demand_qty values
+        production_schedule_states = production_schedule_ids.get_production_schedule_view_state()
+
+        # Collect all dates from forecast_ids in states
+        all_dates = set()
+        schedule_data = {}  # Store computed data by schedule id
+        has_any_data = False
+
+        for state in production_schedule_states:
+            schedule_id = state['id']
+            schedule_data[schedule_id] = {
+                'product_id': state['product_id'],
+                'forecast_by_date': {}
+            }
+
+            for forecast in state.get('forecast_ids', []):
+                date_start = forecast.get('date_start')
+                indirect_demand_qty = forecast.get('indirect_demand_qty', 0.0)
+
+                if date_start and indirect_demand_qty != 0.0:
+                    all_dates.add(date_start)
+                    schedule_data[schedule_id]['forecast_by_date'][date_start] = indirect_demand_qty
+                    has_any_data = True
+
+        # Check if we have any data to export BEFORE creating workbook
+        if not has_any_data or not all_dates:
+            raise UserError(_('No data to export. Selected production schedules have no Indirect Demand Forecast values.'))
+
+        # Sort dates
+        sorted_dates = sorted(list(all_dates))
+
         # Create Excel file in memory
         output = BytesIO()
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -86,34 +117,6 @@ class MrpProductionSchedule(models.Model):
             'valign': 'vcenter'
         })
 
-        # Collect all unique dates (periods) from all selected production schedules
-        # Get computed state with indirect_demand_qty values
-        production_schedule_states = production_schedule_ids.get_production_schedule_view_state()
-
-        # Collect all dates from forecast_ids in states
-        all_dates = set()
-        schedule_data = {}  # Store computed data by schedule id
-
-        for state in production_schedule_states:
-            schedule_id = state['id']
-            schedule_data[schedule_id] = {
-                'product_id': state['product_id'],
-                'forecast_by_date': {}
-            }
-
-            for forecast in state.get('forecast_ids', []):
-                date_start = forecast.get('date_start')
-                if date_start:
-                    all_dates.add(date_start)
-                    # Store indirect_demand_qty for this date
-                    schedule_data[schedule_id]['forecast_by_date'][date_start] = forecast.get('indirect_demand_qty', 0.0)
-
-        # Sort dates
-        sorted_dates = sorted(list(all_dates))
-
-        if not sorted_dates:
-            raise UserError(_('No forecast dates found in selected production schedules.'))
-
         # Write header row
         col = 0
         worksheet.write(0, col, 'Product Internal Reference', header_format)
@@ -137,7 +140,6 @@ class MrpProductionSchedule(models.Model):
 
         # Write data rows - one row per production schedule
         row = 1
-        exported_count = 0
 
         for prod_schedule in production_schedule_ids:
             schedule_id = prod_schedule.id
@@ -173,11 +175,6 @@ class MrpProductionSchedule(models.Model):
             # Write total
             worksheet.write(row, total_col, total_indirect_demand, number_format)
             row += 1
-            exported_count += 1
-
-        # Check if any data was exported
-        if exported_count == 0:
-            raise UserError(_('No data to export. Selected production schedules have no Indirect Demand Forecast values.'))
 
         # Close workbook and get file data
         workbook.close()
