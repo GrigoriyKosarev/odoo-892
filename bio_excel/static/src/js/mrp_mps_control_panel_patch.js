@@ -26,6 +26,22 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
         });
     },
 
+    /**
+     * Add Product Demand export to Action menu items
+     */
+    getActionMenuItems() {
+        const items = this._super(...arguments);
+
+        // Add Product Demand item to Action menu
+        items.other.push({
+            key: "product_demand",
+            description: _t("Product Demand"),
+            callback: () => this._onClickExportExcel(),
+        });
+
+        return items;
+    },
+
     async _onClickExportExcel(ev) {
         const orm = this.env.services.orm;
         const notification = this.env.services.notification;
