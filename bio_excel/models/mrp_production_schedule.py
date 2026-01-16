@@ -255,5 +255,9 @@ class MrpProductionSchedule(models.Model):
         _logger.info('Updated %d forecast line(s) for %d production schedule(s)',
                     total_forecasts_updated, len(production_schedule_ids))
 
+        # Commit changes to database before returning
+        # This ensures changes are persisted before JavaScript reloads the view
+        self.env.cr.commit()
+
         # Return success (JavaScript will show notification and reload)
         return True
