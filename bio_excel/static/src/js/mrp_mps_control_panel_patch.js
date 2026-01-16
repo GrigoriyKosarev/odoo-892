@@ -39,6 +39,13 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
             callback: () => this._onClickExportExcel(),
         });
 
+        // Add Suggested=Forecasted item to Action menu
+        items.other.push({
+            key: "suggested_equals_forecasted",
+            description: _t("Suggested=Forecasted"),
+            callback: () => this._onClickSuggestedEqualsForecast(),
+        });
+
         return items;
     },
 
@@ -78,6 +85,57 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
         } catch (error) {
             // Extract error message from Odoo RPC error
             let errorMessage = _t('Export failed');
+
+            if (error.data && error.data.message) {
+                errorMessage = error.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            notification.add(errorMessage, { type: 'danger' });
+        }
+    },
+
+    async _onClickSuggestedEqualsForecast(ev) {
+        const orm = this.env.services.orm;
+        const notification = this.env.services.notification;
+
+        try {
+            // Get selected record IDs
+            const selectedIds = Array.from(this.model.selectedRecords);
+
+            // If no records selected, show warning
+            if (selectedIds.length === 0) {
+                notification.add(
+                    _t('Please select at least one production schedule.'),
+                    { type: 'warning' }
+                );
+                return;
+            }
+
+            // Get context from props
+            const context = this.props.context || {};
+
+            // Call Python method to set replenish = forecast
+            await orm.call(
+                'mrp.production.schedule',
+                'action_set_replenish_equal_forecast',
+                [selectedIds],
+                { context: context }
+            );
+
+            // Show success notification
+            notification.add(
+                _t('Suggested Replenishment has been set equal to Forecast Demand for all periods.'),
+                { type: 'success' }
+            );
+
+            // Reload the view to show updated values
+            await this.env.model.load();
+
+        } catch (error) {
+            // Extract error message from Odoo RPC error
+            let errorMessage = _t('Operation failed');
 
             if (error.data && error.data.message) {
                 errorMessage = error.data.message;

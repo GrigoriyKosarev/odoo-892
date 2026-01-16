@@ -212,3 +212,52 @@ class MrpProductionSchedule(models.Model):
             'url': f'/web/content/{attachment.id}?download=true',
             'target': 'self',
         }
+
+    @api.model
+    def action_set_replenish_equal_forecast(self, ids=None):
+        """Set Suggested Replenishment equal to Forecast Demand for all periods
+
+        This action sets replenish_qty = forecast_qty for all forecast lines
+        of selected production schedules, ignoring current inventory levels.
+
+        Args:
+            ids: List of production schedule IDs
+        """
+        _logger.info('Suggested=Forecasted action called with IDs: %s', ids)
+
+        if not ids:
+            raise UserError(_('No production schedules selected.'))
+
+        production_schedule_ids = self.browse(ids)
+
+        if not production_schedule_ids:
+            raise UserError(_('No production schedules found.'))
+
+        total_forecasts_updated = 0
+
+        for prod_schedule in production_schedule_ids:
+            # Get all forecast lines for this production schedule
+            forecast_lines = prod_schedule.forecast_ids
+
+            if not forecast_lines:
+                _logger.warning('Production schedule %s has no forecast lines', prod_schedule.id)
+                continue
+
+            # Update each forecast line
+            for forecast in forecast_lines:
+                # Set replenish_qty equal to forecast_qty
+                forecast.write({
+                    'replenish_qty': forecast.forecast_qty,
+                    'replenish_qty_updated': True,  # Mark as manually updated
+                })
+                total_forecasts_updated += 1
+
+        _logger.info('Updated %d forecast line(s) for %d production schedule(s)',
+                    total_forecasts_updated, len(production_schedule_ids))
+
+        # Commit changes to database before returning
+        # This ensures changes are persisted before JavaScript reloads the view
+        self.env.cr.commit()
+
+        # Return success (JavaScript will show notification and reload)
+        return True
