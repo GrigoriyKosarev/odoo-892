@@ -52,6 +52,13 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         required=True,
         help='Column number where dates start (A=0, B=1, C=2, etc.)')
 
+    # Import options
+    set_replenish_equal_forecast = fields.Boolean(
+        string='Suggested Replenishment = Forecasted Demand',
+        default=True,
+        help='When importing the forecast plan, the suggested replenishment for raw materials '
+             'will align with the forecasted plan, ignoring the existing stock.')
+
     @api.onchange('manufacturing_period')
     def _onchange_manufacturing_period(self):
         """Update column configuration based on manufacturing period"""
@@ -258,6 +265,55 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
 
         return date_columns, lines_to_create
 
+    def _set_replenish_equal_forecast_with_indirect_demand(self, production_schedules):
+        """Set replenish_qty = forecast_qty + indirect_demand_qty for imported schedules
+
+        For raw materials (components), the formula should account for indirect demand:
+        - Normal formula: Suggested = Forecast + Indirect Demand - Stock
+        - With this option: Suggested = Forecast + Indirect Demand (ignoring stock)
+
+        Args:
+            production_schedules: recordset of mrp.production.schedule
+        """
+        if not production_schedules:
+            return
+
+        # Get computed state with indirect_demand_qty values
+        try:
+            schedule_states = production_schedules.get_production_schedule_view_state()
+        except Exception as e:
+            raise UserError(_('Failed to compute production schedule state: %s') % str(e))
+
+        # Build a mapping of (schedule_id, date_start) -> forecast_state
+        forecast_state_map = {}
+        for state in schedule_states:
+            schedule_id = state['id']
+            for forecast_state in state.get('forecast_ids', []):
+                date_start = forecast_state.get('date_start')
+                if date_start:
+                    key = (schedule_id, date_start)
+                    forecast_state_map[key] = forecast_state
+
+        # Update replenish_qty for each forecast line
+        updated_count = 0
+        for prod_schedule in production_schedules:
+            for forecast in prod_schedule.forecast_ids:
+                # Find corresponding state
+                key = (prod_schedule.id, forecast.date)
+                forecast_state = forecast_state_map.get(key)
+
+                if forecast_state:
+                    # Calculate: replenish = forecast + indirect_demand
+                    forecast_qty = forecast_state.get('forecast_qty', 0.0)
+                    indirect_demand_qty = forecast_state.get('indirect_demand_qty', 0.0)
+                    replenish_qty = forecast_qty + indirect_demand_qty
+
+                    forecast.write({
+                        'replenish_qty': replenish_qty,
+                        'replenish_qty_updated': True,
+                    })
+                    updated_count += 1
+
     def action_import(self):
         """Import validated lines to mrp.production.schedule"""
         self.ensure_one()
@@ -278,7 +334,7 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         production_schedule_model = self.env['mrp.production.schedule']
         forecast_model = self.env['mrp.product.forecast']
 
-        imported_schedules = []
+        imported_schedules = self.env['mrp.production.schedule']  # Empty recordset
         imported_forecasts_count = 0
 
         for (product, bom), lines in lines_by_product_bom.items():
@@ -296,7 +352,9 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                     'warehouse_id': self.warehouse_id.id,
                     'company_id': self.warehouse_id.company_id.id,
                 })
-                imported_schedules.append(production_schedule)
+
+            # Track all schedules (both new and existing)
+            imported_schedules |= production_schedule
 
             # Create or update forecasts for each date
             for line in lines:
@@ -325,6 +383,10 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
 
         total_schedules = len(lines_by_product_bom)
         total_forecasts = len(lines_to_import)
+
+        # Apply Suggested=Forecasted logic if checkbox is enabled
+        if self.set_replenish_equal_forecast and imported_schedules:
+            self._set_replenish_equal_forecast_with_indirect_demand(imported_schedules)
 
         # Commit changes to database
         self.env.cr.commit()
