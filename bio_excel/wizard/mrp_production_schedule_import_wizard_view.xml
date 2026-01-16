@@ -47,6 +47,14 @@
                             <field name="first_date_column"/>
                         </group>
                     </group>
+
+                    <!-- Import Options -->
+                    <group string="Import Options" name="import_options">
+                        <field name="set_replenish_equal_forecast"
+                               widget="boolean_toggle"
+                               help="When importing the forecast plan, the suggested replenishment for raw materials will align with the forecasted plan, ignoring the existing stock."/>
+                    </group>
+
                     <!-- Invisible field for attrs in footer -->
                     <field name="line_ids" invisible="1"/>
                     <group>
