@@ -1,9 +1,11 @@
 import base64
+import logging
 from io import BytesIO
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import xlsxwriter
-# import xlsxwriter
+
+_logger = logging.getLogger(__name__)
 
 
 class MrpProductionSchedule(models.Model):
@@ -19,6 +21,8 @@ class MrpProductionSchedule(models.Model):
         Args:
             ids: List of production schedule IDs to export
         """
+        _logger.info('Product Demand export called with IDs: %s', ids)
+
         if not xlsxwriter:
             raise UserError(_('Please install xlsxwriter python library to use this feature.\n'
                             'Command: pip install xlsxwriter'))
@@ -29,11 +33,16 @@ class MrpProductionSchedule(models.Model):
         else:
             production_schedule_ids = self.search([])
 
+        _logger.info('Found %d production schedule(s) to export', len(production_schedule_ids))
+
         if not production_schedule_ids:
             raise UserError(_('No production schedules found to export.'))
 
         # Get computed state with indirect_demand_qty values
-        production_schedule_states = production_schedule_ids.get_production_schedule_view_state()
+        try:
+            production_schedule_states = production_schedule_ids.get_production_schedule_view_state()
+        except Exception as e:
+            raise UserError(_('Failed to compute production schedule state: %s') % str(e))
 
         # Collect all dates from forecast_ids in states
         all_dates = set()
@@ -58,6 +67,7 @@ class MrpProductionSchedule(models.Model):
 
         # Check if we have any data to export BEFORE creating workbook
         if not has_any_data or not all_dates:
+            _logger.warning('No indirect demand data found for selected production schedules (IDs: %s)', ids)
             raise UserError(_('No data to export. Selected production schedules have no Indirect Demand Forecast values.'))
 
         # Sort dates
