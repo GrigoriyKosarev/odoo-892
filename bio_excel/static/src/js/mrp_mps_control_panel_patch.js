@@ -76,10 +76,16 @@ patch(MrpMpsControlPanel.prototype, 'bio_excel.MrpMpsControlPanel', {
                 await this.env.services.action.doAction(action);
             }
         } catch (error) {
-            notification.add(
-                error.message || _t('Export failed'),
-                { type: 'danger' }
-            );
+            // Extract error message from Odoo RPC error
+            let errorMessage = _t('Export failed');
+
+            if (error.data && error.data.message) {
+                errorMessage = error.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            notification.add(errorMessage, { type: 'danger' });
         }
     }
 });
