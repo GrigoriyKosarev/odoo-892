@@ -200,7 +200,6 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                 line_vals = {
                     'bio_mrp_production_schedule_wizard_id': self.id,
                     'default_code': default_code,
-                    'product_name': str(product_name).strip() if product_name else '',
                     'forecast_date': forecast_date,
                     'forecast_qty': forecast_qty,
                 }
@@ -375,10 +374,7 @@ class MrpProductionSheduleLinessImportWizard(models.TransientModel):
     default_code = fields.Char(
         string='Product Code',
         required=True,
-        help='Product code from Excel file (Column A)')
-    product_name = fields.Char(
-        string='Product Name',
-        help='Product name from Excel file (Column B)')
+        help='Product code from Excel file')
 
     # Forecast data
     forecast_date = fields.Date(
