@@ -36,6 +36,9 @@
                             <field name="excel_file" filename="filename"/>
                             <field name="filename" invisible="1"/>
                             <field name="company_id"/>
+                            <field name="set_replenish_equal_forecast"
+                                   widget="boolean_toggle"
+                                   help="When importing the forecast plan, the suggested replenishment for raw materials will align with the forecasted plan, ignoring the existing stock."/>
                         </group>
                     </group>
                     <group string="Excel Column Configuration" name="column_config">
@@ -46,13 +49,6 @@
                         <group>
                             <field name="first_date_column"/>
                         </group>
-                    </group>
-
-                    <!-- Import Options -->
-                    <group string="Import Options" name="import_options">
-                        <field name="set_replenish_equal_forecast"
-                               widget="boolean_toggle"
-                               help="When importing the forecast plan, the suggested replenishment for raw materials will align with the forecasted plan, ignoring the existing stock."/>
                     </group>
 
                     <!-- Invisible field for attrs in footer -->

@@ -11,6 +11,12 @@ _logger = logging.getLogger(__name__)
 class MrpProductionSchedule(models.Model):
     _inherit = 'mrp.production.schedule'
 
+    # ODOO-902
+    max_to_replenish_qty = fields.Float(
+        'Maximum to Replenish',
+        default=99999,
+        help="The maximum replenishment you would like to launch for each period in the MPS. Note that if the demand is higher than that amount, the remaining quantity will be transferred to the next period automatically."
+    )
     excel_file = fields.Binary('Excel File', readonly=True)
     excel_filename = fields.Char('Filename', readonly=True)
 
