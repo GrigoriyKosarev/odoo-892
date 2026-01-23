@@ -284,32 +284,45 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         except Exception as e:
             raise UserError(_('Failed to compute production schedule state: %s') % str(e))
 
-        # Build a mapping of (schedule_id, date_start) -> forecast_state
-        forecast_state_map = {}
+        # Build a mapping of schedule_id -> list of forecast_states
+        schedule_forecast_states = {}
         for state in schedule_states:
             schedule_id = state['id']
-            for forecast_state in state.get('forecast_ids', []):
-                date_start = forecast_state.get('date_start')
-                if date_start:
-                    key = (schedule_id, date_start)
-                    forecast_state_map[key] = forecast_state
+            schedule_forecast_states[schedule_id] = state.get('forecast_ids', [])
 
         # Update replenish_qty for each forecast line
         updated_count = 0
         for prod_schedule in production_schedules:
-            for forecast in prod_schedule.forecast_ids:
-                # Find corresponding state
-                key = (prod_schedule.id, forecast.date)
-                forecast_state = forecast_state_map.get(key)
+            forecast_states = schedule_forecast_states.get(prod_schedule.id, [])
 
-                if forecast_state:
+            for forecast in prod_schedule.forecast_ids:
+                # Find the period that contains this forecast.date
+                matching_state = None
+                for forecast_state in forecast_states:
+                    date_start = forecast_state.get('date_start')
+                    date_stop = forecast_state.get('date_stop')
+
+                    # Check if forecast.date falls within this period
+                    if date_start and date_stop:
+                        if date_start <= forecast.date <= date_stop:
+                            matching_state = forecast_state
+                            break
+
+                if matching_state:
                     # Calculate: replenish = forecast + indirect_demand
-                    forecast_qty = forecast_state.get('forecast_qty', 0.0)
-                    indirect_demand_qty = forecast_state.get('indirect_demand_qty', 0.0)
+                    forecast_qty = matching_state.get('forecast_qty', 0.0)
+                    indirect_demand_qty = matching_state.get('indirect_demand_qty', 0.0)
                     replenish_qty = forecast_qty + indirect_demand_qty
 
                     forecast.write({
                         'replenish_qty': replenish_qty,
+                        'replenish_qty_updated': True,
+                    })
+                    updated_count += 1
+                else:
+                    # If no matching period found, just use forecast_qty
+                    forecast.write({
+                        'replenish_qty': forecast.forecast_qty,
                         'replenish_qty_updated': True,
                     })
                     updated_count += 1
