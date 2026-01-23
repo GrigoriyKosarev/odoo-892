@@ -223,8 +223,12 @@ class MrpProductionSchedule(models.Model):
     def action_set_replenish_equal_forecast(self, ids=None):
         """Set Suggested Replenishment equal to Forecast Demand for all periods
 
-        This action sets replenish_qty = forecast_qty for all forecast lines
+        This action sets replenish_qty = forecast_qty + indirect_demand_qty for all forecast lines
         of selected production schedules, ignoring current inventory levels.
+
+        For components with indirect demand, the formula accounts for both:
+        - Direct forecast demand
+        - Indirect demand from parent products in BOM
 
         Args:
             ids: List of production schedule IDs
@@ -239,9 +243,23 @@ class MrpProductionSchedule(models.Model):
         if not production_schedule_ids:
             raise UserError(_('No production schedules found.'))
 
+        # Get computed state with indirect_demand_qty values
+        try:
+            schedule_states = production_schedule_ids.get_production_schedule_view_state()
+        except Exception as e:
+            raise UserError(_('Failed to compute production schedule state: %s') % str(e))
+
+        # Build a mapping of schedule_id -> list of forecast_states
+        schedule_forecast_states = {}
+        for state in schedule_states:
+            schedule_id = state['id']
+            schedule_forecast_states[schedule_id] = state.get('forecast_ids', [])
+
         total_forecasts_updated = 0
 
         for prod_schedule in production_schedule_ids:
+            forecast_states = schedule_forecast_states.get(prod_schedule.id, [])
+
             # Get all forecast lines for this production schedule
             forecast_lines = prod_schedule.forecast_ids
 
@@ -251,9 +269,30 @@ class MrpProductionSchedule(models.Model):
 
             # Update each forecast line
             for forecast in forecast_lines:
-                # Set replenish_qty equal to forecast_qty
+                # Find the period that contains this forecast.date
+                matching_state = None
+                for forecast_state in forecast_states:
+                    date_start = forecast_state.get('date_start')
+                    date_stop = forecast_state.get('date_stop')
+
+                    # Check if forecast.date falls within this period
+                    if date_start and date_stop:
+                        if date_start <= forecast.date <= date_stop:
+                            matching_state = forecast_state
+                            break
+
+                if matching_state:
+                    # Calculate: replenish = forecast + indirect_demand
+                    forecast_qty = matching_state.get('forecast_qty', 0.0)
+                    indirect_demand_qty = matching_state.get('indirect_demand_qty', 0.0)
+                    replenish_qty = forecast_qty + indirect_demand_qty
+                else:
+                    # If no matching period found, just use forecast_qty
+                    replenish_qty = forecast.forecast_qty
+
+                # Set replenish_qty
                 forecast.write({
-                    'replenish_qty': forecast.forecast_qty,
+                    'replenish_qty': replenish_qty,
                     'replenish_qty_updated': True,  # Mark as manually updated
                 })
                 total_forecasts_updated += 1
