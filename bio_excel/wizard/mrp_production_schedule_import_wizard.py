@@ -295,7 +295,15 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
         for prod_schedule in production_schedules:
             forecast_states = schedule_forecast_states.get(prod_schedule.id, [])
 
-            for forecast in prod_schedule.forecast_ids:
+            # Get all forecast lines for this production schedule
+            forecast_lines = prod_schedule.forecast_ids
+
+            if not forecast_lines:
+                continue
+
+            # Group forecast lines by period for proportional distribution
+            forecasts_by_period = {}
+            for forecast in forecast_lines:
                 # Find the period that contains this forecast.date
                 matching_state = None
                 for forecast_state in forecast_states:
@@ -309,23 +317,56 @@ class MrpProductionSheduleImportWizard(models.TransientModel):
                             break
 
                 if matching_state:
-                    # Calculate: replenish = forecast + indirect_demand
-                    forecast_qty = matching_state.get('forecast_qty', 0.0)
-                    indirect_demand_qty = matching_state.get('indirect_demand_qty', 0.0)
-                    replenish_qty = forecast_qty + indirect_demand_qty
+                    period_key = (matching_state.get('date_start'), matching_state.get('date_stop'))
+                    if period_key not in forecasts_by_period:
+                        forecasts_by_period[period_key] = {
+                            'forecasts': [],
+                            'state': matching_state
+                        }
+                    forecasts_by_period[period_key]['forecasts'].append(forecast)
+
+            # Update each forecast line with proportionally distributed indirect demand
+            for period_key, period_data in forecasts_by_period.items():
+                forecasts = period_data['forecasts']
+                matching_state = period_data['state']
+
+                # Get period totals from the computed state
+                period_indirect_demand_qty = matching_state.get('indirect_demand_qty', 0.0)
+
+                # Calculate total forecast_qty for this period to determine proportions
+                total_period_forecast_qty = sum(f.forecast_qty for f in forecasts)
+
+                for forecast in forecasts:
+                    # Distribute indirect_demand proportionally based on forecast_qty
+                    if total_period_forecast_qty > 0:
+                        # Proportional distribution
+                        proportion = forecast.forecast_qty / total_period_forecast_qty
+                        forecast_indirect_demand = period_indirect_demand_qty * proportion
+                    else:
+                        # If no forecast_qty, distribute equally
+                        forecast_indirect_demand = period_indirect_demand_qty / len(forecasts)
+
+                    # Calculate: replenish = forecast + proportional indirect_demand
+                    replenish_qty = forecast.forecast_qty + forecast_indirect_demand
 
                     forecast.write({
                         'replenish_qty': replenish_qty,
                         'replenish_qty_updated': True,
                     })
                     updated_count += 1
-                else:
-                    # If no matching period found, just use forecast_qty
-                    forecast.write({
-                        'replenish_qty': forecast.forecast_qty,
-                        'replenish_qty_updated': True,
-                    })
-                    updated_count += 1
+
+            # Handle forecasts that didn't match any period (fallback)
+            all_processed = set()
+            for period_data in forecasts_by_period.values():
+                all_processed.update(period_data['forecasts'])
+
+            unmatched_forecasts = set(forecast_lines) - all_processed
+            for forecast in unmatched_forecasts:
+                forecast.write({
+                    'replenish_qty': forecast.forecast_qty,
+                    'replenish_qty_updated': True,
+                })
+                updated_count += 1
 
     def action_import(self):
         """Import validated lines to mrp.production.schedule"""
